@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>PsyDuck-js读取Excel演示</title>
+    <script src="./xlsx.full.min.js"> </script>
+    <!-- import Vue before Element -->
+    <script src="https://cdn.jsdelivr.net/npm/vue@2/dist/vue.js"></script>
+    <!-- <script src="https://cdn.jsdelivr.net/npm/vue@2"></script> -->
+    <!-- 引入样式 -->
+    <link rel="stylesheet" href="https://unpkg.com/element-ui/lib/theme-chalk/index.css">
+    <!-- 引入组件库 -->
+    <script src="https://unpkg.com/element-ui/lib/index.js"></script>
+
+    <!-- CDN example (jsDelivr) -->
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1/dayjs.min.js"></script>
+    <style>
+        .bold {
+            font-weight: bold;
+        }
+
+        .red {
+            color: red;
+        }
+
+        .green {
+            color: green;
+        }
+
+        .yellow {
+            color: #e6a23c;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app">
+
+        <el-table :data="tableData" style="width: 100%">
+            <el-table-column prop="name" label="姓名" width="80">
+            </el-table-column>
+
+            <el-table-column :label="nowtime">
+                <el-table-column v-for="(item,index)  in nowAllDay" prop="province" :label="item.date+''" width="180"
+                    :key="index">
+
+                    <template slot-scope="scope">
+                        <div class="cell-class">
+                            <div>
+                                <div v-html="handle(pushfix(scope.row.newdatearr,scope.row.total,index))">
+                                </div>
+                            </div>
+                    </template>
+                </el-table-column>
+
+            </el-table-column>
+
+        </el-table>
+    </div>
+    <input type="file" onchange="readExcel(this)" />
+    <button onclick="show()"> 1</button>
+
+
+    <script>
+
+        var vm = new Vue({
+            el: '#app',
+            data: function () {
+                return {
+                    tableData: [],
+                    nowAllDay: [],
+                    nowtime: dayjs().get('year') + "-" + new Date().getMonth()
+                }
+            },
+            methods: {
+                createPanel: function (year, month) {
+                    var date = new Date();
+                    var day = new Date(date.getFullYear(), date.getMonth(), 0).getDate();
+                    var enddate = new Date(new Date().getFullYear(), new Date().getMonth() - 1, day);
+                    // 获取当月的第一天
+                    const nowMonthFirstDate = 1;
+
+                    // 获取当月的最后一天
+                    const nowMonthFinalDate = dayjs(enddate).get('date')
+
+                    // 声明一个数组，用来存放当月日期
+                    let nowMonthDays = [];
+                    for (let index = nowMonthFirstDate; index <= nowMonthFinalDate; index++) {
+                        nowMonthDays.push({
+                            date: index,
+                            isFill: false
+                        });
+                    }
+
+                    this.nowAllDay = nowMonthDays
+                },
+
+                trandate: function (date, t) {
+                    if (date instanceof Array) {
+                        date.map(item => {
+
+                            if (this.trandate(item.date) == t) {
+                                return this.trandate(item.date)
+                            }
+                        })
+                    } else {
+                        if (date == "") {
+                            return ""
+                        }
+
+                        var b = date.substr(date.indexOf("/") + 1, date.lastIndexOf("/") - 2);  //截取最后一个点号后4个字符
+
+                        return b
+                    }
+
+                },
+                //对比打卡时间判断是否有迟到早退返回标记
+                dateCompare: function (time1, time2) {
+                    var t1 = new Date();
+                    var parts = time1.split(":");
+                    t1.setHours(parts[0], parts[1], parts[2], 0);
+                    var t2 = new Date();
+                    parts = time2.split(":");
+                    t2.setHours(parts[0], parts[1], parts[2], 0);
+                    if (t1.getTime() > t2.getTime()) return 1;
+                    if (t1.getTime() < t2.getTime()) return -1;
+                    return 0;
+                },
+                //处理数据状态的颜色 展示  缺卡  迟到/早退 正常
+                handle: function (a) {
+                    let flag = a.includes("无");
+                    let timeArr = a.split("~");
+                    let timeFlag = false
+                    if (this.dateCompare("9:00:00", timeArr[0]) != 1 || this.dateCompare("17:30:00", timeArr[1]) == 1) {
+                        timeFlag = true
+                    }
+                    if (flag) {
+                        return '<span >' + a + '<span class="red bold">' + " 缺卡" + '</span>' + '</span>';
+                    } else {
+                        if (timeFlag) {
+                            return '<span >' + a + '<span class="yellow bold">' + " 迟到/早退" + '</span>' + '</span>';
+                        } else {
+                            return '<span >' + a + '<span class="green bold">' + " 正常" + '</span>' + '</span>';
+                        }
+                    }
+
+
+                },
+                //处理数据返回时间格式如下 9:15:52~13:09:48
+                pushfix: function (a, b, index) {
+
+
+                    const strarr = b.map(item => {
+
+                        return a.find(aitem => {
+                            if (this.trandate(aitem.date) == item.date) {
+                                return a
+                            }
+
+                        })
+
+                    })
+                    let strFR = strarr[index]?.firtstime ? strarr[index].firtstime : "无"
+                    let strLS = strarr[index]?.lasttime ? strarr[index].lasttime : "无";
+                    return strFR + "~" + strLS
+                },
+                //
+
+
+
+
+
+
+
+            },
+            created() {
+                this.createPanel()
+            },
+
+
+
+        })
+
+        let sheets;
+        function readExcel(file_obj) {
+            var reader = new FileReader();
+            var file = file_obj.files[0];
+            reader.readAsBinaryString(file);
+
+            reader.onload = function (e) {
+                var data = e.target.result;
+                var wb = XLSX.read(data, { type: 'binary' });
+
+                sheetName = wb.SheetNames[0]   // 获取文档中第一个sheet页签的名字
+                sheets = wb.Sheets[sheetName]   // 获sheet名页签下的数据
+
+
+
+
+
+            };
+
+
+
+        }
+        function show() {
+            let date = [];
+            let person = {
+                name: "",
+
+            }
+            let res = [];
+
+            for (let key in sheets) {
+                if (sheets[key].bottom != 1 && sheets[key] != "A1:E299" && sheets[key].w != "部门" && sheets[key].w != "姓名" && sheets[key].w != "日期" && sheets[key].w != "时间" && sheets[key].w != "总公司" && key.includes("B")) {
+                    res.push({
+                        name: sheets[key].w, lie: [], time: [], date: [], key: [], newdate: [], total: vm.$data.nowAllDay, newdatearr: [], newobj: { code: [], }
+                    })
+                }
+            }
+
+            //去重人员   挑选出到底有多少个人
+            let deWeightThree = () => {
+                let map = new Map();
+                for (let item of res) {
+                    if (!map.has(item.name)) {
+                        map.set(item.name, item);
+                    }
+                }
+                return [...map.values()];
+            }
+            let newArr3 = deWeightThree()
+            //得到对应的key值
+            newArr3.forEach(element => {
+                for (let key in sheets) {
+                    if (sheets[key].bottom != 1 && sheets[key] != "A1:E299" && sheets[key].w != "部门" && sheets[key].w != "姓名" && sheets[key].w != "日期" && sheets[key].w != "时间" && sheets[key].w != "总公司" && key.includes("B")) {
+                        // console.log(sheets[key].w == element.name);
+
+                        if (sheets[key].w == element.name) {
+                            element.lie.push(key)
+                        }
+                    }
+                }
+            })
+
+            newArr3.forEach(element => {
+                for (let key in element) {
+                    if (key == "lie") {
+                        element[key].forEach(index => {
+                            var newstring = index.substring(1, index.length);
+                            element['key'].push(newstring)
+                        })
+                    }
+                }
+            })
+
+            newArr3.forEach(element => {
+                element["key"].forEach(index => {
+                    for (let newkey in sheets) {
+                        if (newkey.includes("C")) {
+                            let tempstring = newkey.substring(1, newkey.length);
+                            if (index == tempstring) {
+                                element['date'].push(sheets["C" + index].w)
+                            }
+                        }
+                        if (newkey.includes("D")) {
+                            let tempstring = newkey.substring(1, newkey.length);
+                            if (index == tempstring) {
+                                element['time'].push(sheets["D" + index].w)
+                            }
+                        }
+                    }
+                })
+            })
+
+            let newobj = {
+                newdate: [],
+                code: []
+            }
+
+
+
+            console.log(newArr3);
+
+
+
+            function unique(arr) {
+                if (!Array.isArray(arr)) {
+                    return
+                }
+                var array = [];
+                for (var i = 0; i < arr.length; i++) {
+                    if (array.indexOf(arr[i]) === -1) {
+                        array.push(arr[i])
+                    }
+                }
+                return array;
+
+
+
+            }
+
+            //日期去重  挑选出到准确日期
+            for (i = 0; i < newArr3.length; i++) {
+                newArr3[i]["newdate"] = unique(newArr3[i]["date"])
+            }
+
+
+            newArr3.map(item => {
+                item["newdate"].map(data => {
+                    let last = item["date"].findLastIndex(lastdata => lastdata == data);  //取值的时候减1
+                    let firts = item["date"].findIndex(firstdata => firstdata == data);
+                    let obj = {
+                        date: item["date"].find(firstdata => firstdata == data),
+                        last, firts,
+                        lasttime: item["time"][last],
+                        firtstime: item["time"][firts],
+                        name: item["name"]
+                    }
+                    item["newdatearr"].push(obj)
+
+                })
+            })
+
+            vm.$data.tableData = newArr3
+        }
+
+
+
+
+
+
+
+
+
+
+    </script>
+</body>
+
+</html>
